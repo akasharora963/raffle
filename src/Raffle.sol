@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
+import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 
 /**
  * @title Raffle
@@ -11,10 +12,14 @@ import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/V
  * @notice This contrcat is for implementing Raffle
  */
 
-contract Raffle is VRFConsumerBaseV2Plus {
+contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
     /** Errors */
     error Raffle__NotEnoughFunds();
-    error Raffle__NotOver();
+    error Raffle__UpkeepNotNeeded(
+        uint256 balance,
+        uint256 playersLength,
+        uint256 raffleState
+    );
     error Raffle__TransferFailed();
     error Raffle__NotOpen();
 
@@ -74,6 +79,36 @@ contract Raffle is VRFConsumerBaseV2Plus {
 
         emit RaffleJoined(msg.sender);
     }
+
+    /**
+     * @dev This is the function that the Chainlink Keeper nodes call
+     * they look for `upkeepNeeded` to return True.
+     * the following should be true for this to return true:
+     * 1. The time interval has passed between raffle runs.
+     * 2. The lottery is open.
+     * 3. The contract has ETH.
+     * 4. Implicity, your subscription is funded with LINK.
+     */
+    function checkUpkeep(
+        bytes memory /* checkData */
+    )
+        public
+        view
+        override
+        returns (bool upkeepNeeded, bytes memory /*performData*/)
+    {
+        bool hasTimePassed = (block.timestamp - s_lastTimeStamp) >= i_interval;
+        bool isRaffleOpen = s_raffleState == RaffleState.OPEN;
+        bool hasBalance = address(this).balance > 0;
+        bool hasPlayers = s_players.length > 0;
+        upkeepNeeded =
+            hasTimePassed &&
+            isRaffleOpen &&
+            hasBalance &&
+            hasPlayers;
+
+        return (upkeepNeeded, new bytes(0));
+    }
     /**
      * @dev This function is for choosing the winner of the raffle
             Generate a randome number
@@ -81,11 +116,15 @@ contract Raffle is VRFConsumerBaseV2Plus {
             Automatic calling
      * @notice This function is for choosing the winner of the raffle
      */
-    function chooseWinner() external {
-        if ((block.timestamp - s_lastTimeStamp) < i_interval) {
-            revert Raffle__NotOver();
+    function performUpkeep(bytes calldata /* performData */) external {
+        (bool upkeepNeeded, ) = checkUpkeep("");
+        if (!upkeepNeeded) {
+            revert Raffle__UpkeepNotNeeded(
+                address(this).balance,
+                s_players.length,
+                uint256(s_raffleState)
+            );
         }
-
         s_raffleState = RaffleState.CALCULATING;
         // Will revert if subscription is not set and funded.
         VRFV2PlusClient.RandomWordsRequest memory request = VRFV2PlusClient
@@ -101,11 +140,11 @@ contract Raffle is VRFConsumerBaseV2Plus {
                 )
             });
 
-        uint256 requestId = s_vrfCoordinator.requestRandomWords(request);
+        s_vrfCoordinator.requestRandomWords(request);
     }
 
     function fulfillRandomWords(
-        uint256 requestId,
+        uint256 /*requestId*/,
         uint256[] calldata randomWords
     ) internal virtual override {
         uint256 indexOfWinner = randomWords[0] % s_players.length;
