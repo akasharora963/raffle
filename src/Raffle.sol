@@ -138,7 +138,13 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
         s_vrfCoordinator.requestRandomWords(request);
     }
 
-    function fulfillRandomWords(uint256, /*requestId*/ uint256[] calldata randomWords) internal virtual override {
+    // 2334724878999923 % 10
+
+    function fulfillRandomWords(
+        uint256,
+        /*requestId*/
+        uint256[] calldata randomWords
+    ) internal virtual override {
         uint256 indexOfWinner = randomWords[0] % s_players.length;
         address payable winner = s_players[indexOfWinner];
         s_lastWinner = winner;
@@ -160,5 +166,13 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
      */
     function getEntryFee() public view returns (uint256) {
         return i_entryFee;
+    }
+
+    function getRaffleState() public view returns (RaffleState) {
+        return s_raffleState;
+    }
+
+    function getPlayer(uint256 index) public view returns (address) {
+        return s_players[index];
     }
 }
