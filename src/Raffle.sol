@@ -3,8 +3,7 @@ pragma solidity ^0.8.19;
 
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
-import {AutomationCompatibleInterface} from
-    "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
+import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/interfaces/AutomationCompatibleInterface.sol";
 
 /**
  * @title Raffle
@@ -17,7 +16,11 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
      * Errors
      */
     error Raffle__NotEnoughFunds();
-    error Raffle__UpkeepNotNeeded(uint256 balance, uint256 playersLength, uint256 raffleState);
+    error Raffle__UpkeepNotNeeded(
+        uint256 balance,
+        uint256 playersLength,
+        uint256 raffleState
+    );
     error Raffle__TransferFailed();
     error Raffle__NotOpen();
 
@@ -49,7 +52,7 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
      */
     event RaffleJoined(address indexed player);
     event WinnerChosen(address indexed player);
-    event RequestedWinner(uint256 requestId);
+    event RequestedWinner(uint256 indexed requestId);
 
     constructor(
         uint256 _entryFee,
@@ -95,17 +98,23 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
      * 3. The contract has ETH.
      * 4. Implicity, your subscription is funded with LINK.
      */
-    function checkUpkeep(bytes memory /* checkData */ )
+    function checkUpkeep(
+        bytes memory /* checkData */
+    )
         public
         view
         override
-        returns (bool upkeepNeeded, bytes memory /*performData*/ )
+        returns (bool upkeepNeeded, bytes memory /*performData*/)
     {
         bool hasTimePassed = (block.timestamp - s_lastTimeStamp) >= i_interval;
         bool isRaffleOpen = s_raffleState == RaffleState.OPEN;
         bool hasBalance = address(this).balance > 0;
         bool hasPlayers = s_players.length > 0;
-        upkeepNeeded = hasTimePassed && isRaffleOpen && hasBalance && hasPlayers;
+        upkeepNeeded =
+            hasTimePassed &&
+            isRaffleOpen &&
+            hasBalance &&
+            hasPlayers;
 
         return (upkeepNeeded, new bytes(0));
     }
@@ -117,24 +126,29 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
      * @notice This function is for choosing the winner of the raffle
      */
 
-    function performUpkeep(bytes calldata /* performData */ ) external {
-        (bool upkeepNeeded,) = checkUpkeep("");
+    function performUpkeep(bytes calldata /* performData */) external {
+        (bool upkeepNeeded, ) = checkUpkeep("");
         if (!upkeepNeeded) {
-            revert Raffle__UpkeepNotNeeded(address(this).balance, s_players.length, uint256(s_raffleState));
+            revert Raffle__UpkeepNotNeeded(
+                address(this).balance,
+                s_players.length,
+                uint256(s_raffleState)
+            );
         }
         s_raffleState = RaffleState.CALCULATING;
         // Will revert if subscription is not set and funded.
-        VRFV2PlusClient.RandomWordsRequest memory request = VRFV2PlusClient.RandomWordsRequest({
-            keyHash: i_keyHash,
-            subId: i_subscriptionId,
-            requestConfirmations: REQUEST_CONFIRMATIONS,
-            callbackGasLimit: i_callbackGasLimit,
-            numWords: NUM_WORDS,
-            extraArgs: VRFV2PlusClient._argsToBytes(
-                // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
-                VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
-            )
-        });
+        VRFV2PlusClient.RandomWordsRequest memory request = VRFV2PlusClient
+            .RandomWordsRequest({
+                keyHash: i_keyHash,
+                subId: i_subscriptionId,
+                requestConfirmations: REQUEST_CONFIRMATIONS,
+                callbackGasLimit: i_callbackGasLimit,
+                numWords: NUM_WORDS,
+                extraArgs: VRFV2PlusClient._argsToBytes(
+                    // Set nativePayment to true to pay for VRF requests with Sepolia ETH instead of LINK
+                    VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
+                )
+            });
 
         uint256 requestId = s_vrfCoordinator.requestRandomWords(request);
         emit RequestedWinner(requestId);
@@ -156,7 +170,7 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
 
         emit WinnerChosen(s_lastWinner);
 
-        (bool success,) = winner.call{value: address(this).balance}("");
+        (bool success, ) = winner.call{value: address(this).balance}("");
 
         if (!success) {
             revert Raffle__TransferFailed();
@@ -176,5 +190,13 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
 
     function getPlayer(uint256 index) public view returns (address) {
         return s_players[index];
+    }
+
+    function getLastTimeStamp() public view returns (uint256) {
+        return s_lastTimeStamp;
+    }
+
+    function getLastWinner() public view returns (address) {
+        return s_lastWinner;
     }
 }
